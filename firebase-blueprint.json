@@ -1,0 +1,176 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Registered customer or recipe-holder profile with role metadata.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "email": { "type": "string", "format": "email", "maxLength": 160 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "role": { "type": "string", "enum": ["customer", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "email", "role", "createdAt", "updatedAt"]
+    },
+    "UserState": {
+      "title": "UserState",
+      "description": "Auto-saved per-user bag, checkout form, draft recipe, favorites, and theme preference.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "cart": { "type": "array", "description": "Up to 30 bag items." },
+        "favorites": { "type": "array", "description": "Up to 50 dish IDs." },
+        "includeStoryCard": { "type": "boolean" },
+        "checkoutForm": { "type": "object" },
+        "draftRecipe": { "type": "object" },
+        "theme": { "type": "string", "enum": ["light", "dark"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "cart", "favorites", "includeStoryCard", "checkoutForm", "draftRecipe", "theme", "updatedAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Dehradun pre-order with Story Card A/B flag and status tracking.",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "minLength": 4, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "customerName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "customerEmail": { "type": "string", "maxLength": 160 },
+        "phone": { "type": "string", "minLength": 10, "maxLength": 20 },
+        "dehradunArea": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "hostelAddress": { "type": "string", "minLength": 4, "maxLength": 240 },
+        "deliverySlot": { "type": "string", "enum": ["Lunch (12:30-2:00 PM)", "Evening Tiffin (5:00-6:30 PM)", "Dinner (7:30-9:00 PM)"] },
+        "note": { "type": "string", "maxLength": 400 },
+        "paymentMethod": { "type": "string", "enum": ["UPI", "COD"] },
+        "includeStoryCard": { "type": "boolean" },
+        "items": { "type": "array" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["Placed", "Paid", "Delivered"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "orderId",
+        "userId",
+        "customerName",
+        "customerEmail",
+        "phone",
+        "dehradunArea",
+        "hostelAddress",
+        "deliverySlot",
+        "note",
+        "paymentMethod",
+        "includeStoryCard",
+        "items",
+        "totalAmount",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Feedback": {
+      "title": "Feedback",
+      "description": "Post-order taste and story validation feedback.",
+      "type": "object",
+      "properties": {
+        "feedbackId": { "type": "string", "minLength": 4, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "orderId": { "type": "string", "minLength": 4, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "tasteRating": { "type": "number" },
+        "storyRating": { "type": "number" },
+        "storyInfluenced": { "type": "boolean" },
+        "reorderIntent": { "type": "string", "enum": ["Yes", "Maybe", "No"] },
+        "includeStoryCard": { "type": "boolean" },
+        "comment": { "type": "string", "maxLength": 600 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "feedbackId",
+        "orderId",
+        "userId",
+        "tasteRating",
+        "storyRating",
+        "storyInfluenced",
+        "reorderIntent",
+        "includeStoryCard",
+        "comment",
+        "createdAt"
+      ]
+    },
+    "FamilyRecipe": {
+      "title": "FamilyRecipe",
+      "description": "Family recipe and story submitted by a recipe-holder or family member.",
+      "type": "object",
+      "properties": {
+        "recipeId": { "type": "string", "minLength": 4, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "submitterName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "relationship": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "state": { "type": "string", "enum": ["Odisha", "Uttarakhand", "West Bengal"] },
+        "recipeName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "ingredients": { "type": "string", "minLength": 5, "maxLength": 2000 },
+        "steps": { "type": "string", "minLength": 5, "maxLength": 4000 },
+        "story": { "type": "string", "minLength": 5, "maxLength": 2500 },
+        "photoData": { "type": "string", "maxLength": 250000 },
+        "voiceNoteData": { "type": "string", "maxLength": 350000 },
+        "status": { "type": "string", "enum": ["Pending", "Featured", "Archived"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "recipeId",
+        "userId",
+        "submitterName",
+        "relationship",
+        "state",
+        "recipeName",
+        "ingredients",
+        "steps",
+        "story",
+        "photoData",
+        "voiceNoteData",
+        "status",
+        "createdAt"
+      ]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Trusted admin allowlist entry keyed by Firebase Auth UID.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "maxLength": 160 }
+      },
+      "required": ["uid", "email"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Stores customer and recipe-holder profile metadata."
+    },
+    "/userStates/{userId}": {
+      "schema": { "$ref": "#/entities/UserState" },
+      "description": "Stores auto-saved bag, checkout form, draft recipe, favorites, and theme preference per user."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Dehradun pre-orders with story card A/B test flag and Placed/Paid/Delivered lifecycle."
+    },
+    "/feedback/{feedbackId}": {
+      "schema": { "$ref": "#/entities/Feedback" },
+      "description": "Post-order taste and story ratings plus reorder intent."
+    },
+    "/recipes/{recipeId}": {
+      "schema": { "$ref": "#/entities/FamilyRecipe" },
+      "description": "Submitted family recipes with memory-based ingredients, story, optional photo, and voice note."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Admin role allowlist for Founder Dashboard access."
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Memory Meals",
+  "description": "Story-backed regional Indian food from real family recipes in Dehradun — Odia, Uttarakhandi, and Bengali home-style jars and meals.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

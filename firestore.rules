@@ -1,0 +1,289 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Admin check requires verified email so unverified email claims cannot be spoofed
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.email_verified == true
+        && (
+          request.auth.token.email == 'mohantysovit@gmail.com'
+          || exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        );
+    }
+
+    // 1. User Profiles (/users/{userId})
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'email', 'role', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'email', 'photoURL', 'role', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+        && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500))
+        && data.role in ['customer', 'admin']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().role == 'customer'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isSignedIn()
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (
+            isOwner(userId)
+            && incoming().role == existing().role
+            && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoURL', 'updatedAt'])
+          )
+          || isAdmin()
+        );
+      allow delete: if false;
+    }
+
+    // 2. Per-User Auto-Save State (/userStates/{userId})
+    function isValidCheckoutForm(form) {
+      return form is map
+        && form.keys().hasAll(['customerName', 'phone', 'dehradunArea', 'hostelAddress', 'deliverySlot', 'note', 'paymentMethod'])
+        && form.keys().hasOnly(['customerName', 'phone', 'dehradunArea', 'hostelAddress', 'deliverySlot', 'note', 'paymentMethod'])
+        && form.customerName is string && form.customerName.size() <= 100
+        && form.phone is string && form.phone.size() <= 20
+        && form.dehradunArea is string && form.dehradunArea.size() <= 100
+        && form.hostelAddress is string && form.hostelAddress.size() <= 240
+        && form.deliverySlot is string && form.deliverySlot.size() <= 60
+        && form.note is string && form.note.size() <= 400
+        && form.paymentMethod in ['UPI', 'COD'];
+    }
+
+    function isValidDraftRecipe(draft) {
+      return draft is map
+        && draft.keys().hasAll(['submitterName', 'relationship', 'state', 'recipeName', 'ingredients', 'steps', 'story'])
+        && draft.keys().hasOnly(['submitterName', 'relationship', 'state', 'recipeName', 'ingredients', 'steps', 'story'])
+        && draft.submitterName is string && draft.submitterName.size() <= 100
+        && draft.relationship is string && draft.relationship.size() <= 100
+        && draft.state in ['Odisha', 'Uttarakhand', 'West Bengal']
+        && draft.recipeName is string && draft.recipeName.size() <= 120
+        && draft.ingredients is string && draft.ingredients.size() <= 2000
+        && draft.steps is string && draft.steps.size() <= 4000
+        && draft.story is string && draft.story.size() <= 2500;
+    }
+
+    function isValidUserState(data, userId) {
+      return data.keys().hasAll(['uid', 'cart', 'favorites', 'includeStoryCard', 'checkoutForm', 'draftRecipe', 'theme', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'cart', 'favorites', 'includeStoryCard', 'checkoutForm', 'draftRecipe', 'theme', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.cart is list && data.cart.size() <= 30
+        && (data.cart.size() == 0 || (data.cart[0] is map && data.cart[0].keys().hasAll(['itemId', 'name', 'price', 'quantity', 'state']) && data.cart[0].itemId is string && data.cart[0].quantity is int))
+        && data.favorites is list && data.favorites.size() <= 50
+        && (data.favorites.size() == 0 || (data.favorites[0] is string && data.favorites[0].size() <= 64))
+        && data.includeStoryCard is bool
+        && isValidCheckoutForm(data.checkoutForm)
+        && isValidDraftRecipe(data.draftRecipe)
+        && data.theme in ['light', 'dark']
+        && data.updatedAt is timestamp;
+    }
+
+    match /userStates/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserState(incoming(), userId)
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserState(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['cart', 'favorites', 'includeStoryCard', 'checkoutForm', 'draftRecipe', 'theme', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // 3. Orders (/orders/{orderId})
+    function isValidOrder(data, orderId) {
+      return data.keys().hasAll([
+          'orderId', 'userId', 'customerName', 'customerEmail', 'phone',
+          'dehradunArea', 'hostelAddress', 'deliverySlot', 'note',
+          'paymentMethod', 'includeStoryCard', 'items', 'totalAmount',
+          'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'orderId', 'userId', 'customerName', 'customerEmail', 'phone',
+          'dehradunArea', 'hostelAddress', 'deliverySlot', 'note',
+          'paymentMethod', 'includeStoryCard', 'items', 'totalAmount',
+          'status', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.orderId)
+        && data.orderId == orderId
+        && isValidId(data.userId)
+        && data.customerName is string && data.customerName.size() >= 2 && data.customerName.size() <= 100
+        && data.customerEmail is string && data.customerEmail.size() <= 160
+        && data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 20
+        && data.dehradunArea is string && data.dehradunArea.size() >= 2 && data.dehradunArea.size() <= 100
+        && data.hostelAddress is string && data.hostelAddress.size() >= 4 && data.hostelAddress.size() <= 240
+        && data.deliverySlot in ['Lunch (12:30-2:00 PM)', 'Evening Tiffin (5:00-6:30 PM)', 'Dinner (7:30-9:00 PM)']
+        && data.note is string && data.note.size() <= 400
+        && data.paymentMethod in ['UPI', 'COD']
+        && data.includeStoryCard is bool
+        && data.items is list && data.items.size() >= 1 && data.items.size() <= 30
+        && data.items[0] is map
+        && data.items[0].keys().hasAll(['itemId', 'name', 'price', 'quantity', 'state'])
+        && data.items[0].itemId is string && data.items[0].itemId.size() <= 64
+        && data.items[0].quantity is int && data.items[0].quantity >= 1 && data.items[0].quantity <= 20
+        && data.totalAmount is number && data.totalAmount > 0 && data.totalAmount <= 50000
+        && data.status in ['Placed', 'Paid', 'Delivered']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /orders/{orderId} {
+      allow get: if isValidId(orderId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isValidId(orderId)
+        && isSignedIn()
+        && isValidOrder(incoming(), orderId)
+        && incoming().userId == request.auth.uid
+        && incoming().status == 'Placed'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(orderId)
+        && isAdmin()
+        && isValidOrder(incoming(), orderId)
+        && incoming().orderId == existing().orderId
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // 4. Feedback (/feedback/{feedbackId}) - keyed 1:1 by orderId
+    function isValidFeedback(data, feedbackId) {
+      return data.keys().hasAll([
+          'feedbackId', 'orderId', 'userId', 'tasteRating', 'storyRating',
+          'storyInfluenced', 'reorderIntent', 'includeStoryCard', 'comment', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'feedbackId', 'orderId', 'userId', 'tasteRating', 'storyRating',
+          'storyInfluenced', 'reorderIntent', 'includeStoryCard', 'comment', 'createdAt'
+        ])
+        && isValidId(data.feedbackId)
+        && data.feedbackId == feedbackId
+        && isValidId(data.orderId)
+        && data.orderId == feedbackId
+        && isValidId(data.userId)
+        && data.tasteRating is int && data.tasteRating >= 1 && data.tasteRating <= 5
+        && data.storyRating is int && data.storyRating >= 1 && data.storyRating <= 5
+        && data.storyInfluenced is bool
+        && data.reorderIntent in ['Yes', 'Maybe', 'No']
+        && data.includeStoryCard is bool
+        && data.comment is string && data.comment.size() <= 600
+        && data.createdAt is timestamp;
+    }
+
+    match /feedback/{feedbackId} {
+      allow get: if isValidId(feedbackId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isValidId(feedbackId)
+        && isSignedIn()
+        && isValidFeedback(incoming(), feedbackId)
+        && incoming().userId == request.auth.uid
+        && incoming().createdAt == request.time
+        && exists(/databases/$(database)/documents/orders/$(incoming().orderId))
+        && get(/databases/$(database)/documents/orders/$(incoming().orderId)).data.userId == request.auth.uid;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // 5. Family Recipes (/recipes/{recipeId})
+    function isValidRecipe(data, recipeId) {
+      return data.keys().hasAll([
+          'recipeId', 'userId', 'submitterName', 'relationship', 'state',
+          'recipeName', 'ingredients', 'steps', 'story', 'photoData',
+          'voiceNoteData', 'status', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'recipeId', 'userId', 'submitterName', 'relationship', 'state',
+          'recipeName', 'ingredients', 'steps', 'story', 'photoData',
+          'voiceNoteData', 'status', 'createdAt'
+        ])
+        && isValidId(data.recipeId)
+        && data.recipeId == recipeId
+        && isValidId(data.userId)
+        && data.submitterName is string && data.submitterName.size() >= 2 && data.submitterName.size() <= 100
+        && data.relationship is string && data.relationship.size() >= 2 && data.relationship.size() <= 100
+        && data.state in ['Odisha', 'Uttarakhand', 'West Bengal']
+        && data.recipeName is string && data.recipeName.size() >= 2 && data.recipeName.size() <= 120
+        && data.ingredients is string && data.ingredients.size() >= 5 && data.ingredients.size() <= 2000
+        && data.steps is string && data.steps.size() >= 5 && data.steps.size() <= 4000
+        && data.story is string && data.story.size() >= 5 && data.story.size() <= 2500
+        && data.photoData is string && data.photoData.size() <= 250000
+        && data.voiceNoteData is string && data.voiceNoteData.size() <= 350000
+        && data.status in ['Pending', 'Featured', 'Archived']
+        && data.createdAt is timestamp;
+    }
+
+    match /recipes/{recipeId} {
+      allow get: if isValidId(recipeId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isValidId(recipeId)
+        && isSignedIn()
+        && isValidRecipe(incoming(), recipeId)
+        && incoming().userId == request.auth.uid
+        && incoming().status == 'Pending'
+        && incoming().createdAt == request.time;
+      allow update: if isValidId(recipeId)
+        && isAdmin()
+        && isValidRecipe(incoming(), recipeId)
+        && incoming().recipeId == existing().recipeId
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status']);
+      allow delete: if false;
+    }
+
+    // 6. Admins (/admins/{userId})
+    match /admins/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+  }
+}
